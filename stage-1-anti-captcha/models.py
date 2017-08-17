@@ -36,7 +36,7 @@ def mse_cost(h, y):
 
 def mse_cost_dev(X, y, h):
     diff = h - y
-    return (np.matmul(diff.transpose(), X) / X.shape[0]), (diff.mean())
+    return (np.matmul(diff.transpose(), X) / X.shape[0]).transpose(), (diff.mean())
 
 
 def log_cost(h, y):
