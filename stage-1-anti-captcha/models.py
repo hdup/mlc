@@ -40,16 +40,15 @@ def mse_cost_dev(X, y, h):
 
 
 def log_cost(h, y):
-    return -(y * np.log(h + epsilon) + (1.0 - y) * np.log(1.0 - h + epsilon)).sum(axis=0) / y.shape[0]
+    return -(y * np.log(h + epsilon) + (1.0 - y) * np.log(1.0 - h + epsilon)).mean()
 
 
 def log_cost_dev(X, y, h):
     diff = h - y
-    return ((diff * X).sum(axis=0) / y.shape[0]), (diff.sum(axis=0) / y.shape[0])
+    return (np.matmul(X.transpose(), diff) / y.shape[0]), diff.mean()
 
 
-def gd_update(X, y, h, W, b, cost_dev_func, lr=0.01):
-    d_W, d_b = cost_dev_func(X, y, h)
+def gd_update(W, b, d_W, d_b, lr=0.01):
     return (W - lr * d_W), (b - lr * d_b)
 
 
@@ -65,6 +64,10 @@ def std_normalize(X):
     for col in range(0, X.shape[1]):
         X[:, col] = (X[:, col] - means[col]) / stds[col]
     return stds, means
+
+def data_normalize(X, stds, means):
+    for col in range(0, X.shape[1]):
+        X[:, col] = (X[:, col] - means[col]) / stds[col]
 
 def binary_accuracy(h, y, threshold=0.5):
     right_cnt = 0
@@ -89,6 +92,8 @@ def binary_confusion_matrix(h, y, threshold=0.5):
                 false_neg += 1
             else:
                 true_neg += 1
+    pred_pos = true_pos + false_pos
+    total_pos = true_pos + false_neg
     pc = true_pos / (true_pos + false_pos)
     rc = true_pos / (true_pos + false_neg)
     f1 = 2.0 * (pc * rc) / (pc + rc)
