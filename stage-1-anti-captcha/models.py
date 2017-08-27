@@ -22,7 +22,7 @@ def sigmoid(g):
 
 def softmax(X):
     exp_x = np.exp(X)
-    return  exp_x / exp_x.sum()
+    return  exp_x / exp_x.sum(axis=1)
 
 
 def logistic_model(X, W, b):
@@ -94,7 +94,7 @@ def binary_confusion_matrix(h, y, threshold=0.5):
                 true_neg += 1
     pred_pos = true_pos + false_pos
     total_pos = true_pos + false_neg
-    pc = true_pos / (true_pos + false_pos)
-    rc = true_pos / (true_pos + false_neg)
-    f1 = 2.0 * (pc * rc) / (pc + rc)
+    pc = 0 if pred_pos==0 else (true_pos / pred_pos)
+    rc = 0 if total_pos==0 else (true_pos / total_pos)
+    f1 = 0 if (pc + rc)==0 else (2.0 * (pc * rc) / (pc + rc))
     return pc, rc, f1
