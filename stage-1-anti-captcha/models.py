@@ -23,6 +23,7 @@ def sigmoid(g):
 def logistic_model(X, W, b):
     return sigmoid(linear_model(X, W, b))
 
+
 def softmax(X):
     exp_x = np.exp(X)
     return exp_x / exp_x.sum(axis=1).reshape((exp_x.shape[0], 1))
@@ -34,7 +35,7 @@ def softmax_regression_model(X, W, b):
 
 def mse_cost(h, y):
     diff = h - y
-    return 0.5 * np.matmul(diff.transpose(), diff).mean()
+    return 0.5 * np.matmul(diff.transpose(), diff) / y.shape[0]
 
 
 def mse_cost_dev(X, y, h):
