@@ -6,7 +6,6 @@ import numpy as np
 from keras.utils import to_categorical
 from shutil import copyfile
 
-
 # you can resize or not
 image_resized_shape = (112, 112)
 label_chars = '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -59,29 +58,42 @@ def split_training_data(image_folder, root_folder, portion=0.8):
             copyfile(os.path.join(image_folder, f), os.path.join(validation_folder, f))
 
 
-def data_generator(image_folder, batch_size=32):
+def data_generator(image_folder, batch_size=32, multi_head=True):
     image_files = [os.path.join(image_folder, f) for f in os.listdir(image_folder) if f.endswith('.png')]
-    data = []
-    data_y0 = []
-    data_y1 = []
-    data_y2 = []
-    data_y3 = []
-    while True:
-        for im_file in image_files:
-            im_data, y0, y1, y2, y3 = preprocess_image(im_file, dsize=image_resized_shape)
-            data.append(im_data)
-            data_y0.append(y0)
-            data_y1.append(y1)
-            data_y2.append(y2)
-            data_y3.append(y3)
-            if len(data) == batch_size:
-                yield np.stack(data, axis=0), [np.stack(data_y0, axis=0), np.stack(data_y1, axis=0),
-                                               np.stack(data_y2, axis=0), np.stack(data_y3, axis=0)]
-                data = []
-                data_y0 = []
-                data_y1 = []
-                data_y2 = []
-                data_y3 = []
+    if multi_head:
+        data = []
+        data_y0 = []
+        data_y1 = []
+        data_y2 = []
+        data_y3 = []
+        while True:
+            for im_file in image_files:
+                im_data, y0, y1, y2, y3 = preprocess_image(im_file, dsize=image_resized_shape)
+                data.append(im_data)
+                data_y0.append(y0)
+                data_y1.append(y1)
+                data_y2.append(y2)
+                data_y3.append(y3)
+                if len(data) == batch_size:
+                    yield np.stack(data, axis=0), [np.stack(data_y0, axis=0), np.stack(data_y1, axis=0),
+                                                   np.stack(data_y2, axis=0), np.stack(data_y3, axis=0)]
+                    data = []
+                    data_y0 = []
+                    data_y1 = []
+                    data_y2 = []
+                    data_y3 = []
+    else:
+        data = []
+        data_y = []
+        while True:
+            for im_file in image_files:
+                im_data, y0, y1, y2, y3 = preprocess_image(im_file, dsize=image_resized_shape)
+                data.append(im_data)
+                data_y.append(np.hstack([y0, y1, y2, y3]))
+                if len(data) == batch_size:
+                    yield np.stack(data, axis=0), np.stack(data_y, axis=0)
+                    data = []
+                    data_y = []
 
 
 if __name__ == '__main__':

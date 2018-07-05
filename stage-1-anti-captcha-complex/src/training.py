@@ -10,6 +10,10 @@ from prepare_data import (
     data_generator,
     label_categorical_size
 )
+from custom_funcs import (
+    segmented_categorical_accuracy,
+    segmented_categorical_crossentropy
+)
 
 bn_axis = 3
 
@@ -58,7 +62,8 @@ def build_resnet_style_conv_block(filters, kernel_size, name, tensor):
 
 
 def build_conv_block(filters, kernel_size, name, tensor):
-    x = layers.Conv2D(filters, kernel_size=kernel_size, strides=(1, 1), padding='same', name='{}_conv'.format(name))(tensor)
+    x = layers.Conv2D(filters, kernel_size=kernel_size, strides=(1, 1), padding='same', name='{}_conv'.format(name))(
+        tensor)
     x = layers.BatchNormalization(name='{}_bn'.format(name))(x)
     x = layers.Activation('relu', name='{}_relu'.format(name))(x)
     x = layers.MaxPooling2D(name='{}_pooling'.format(name))(x)
@@ -72,26 +77,30 @@ def build_classify_node(tensor, class_count, kernel_size, name):
     return x
 
 
-def build_conv_multi_heads_model(class_count, input_shape):
+def build_conv_model(class_count, input_shape, multi_head=True):
     inputs = layers.Input(shape=input_shape)
 
-    x = build_conv_block(64,  (3, 3), 'block1', inputs)
+    x = build_conv_block(64, (3, 3), 'block1', inputs)
     x = build_conv_block(128, (3, 3), 'block2', x)
     x = build_conv_block(256, (3, 3), 'block3', x)
-    x = build_conv_block(64,  (1, 1), 'bottleneck', x)
+    x = build_conv_block(64, (1, 1), 'bottleneck', x)
 
     bottle_shape = (int(x.shape[1]), int(x.shape[2]))
-    x = [build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_1'),
-         build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_2'),
-         build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_3'),
-         build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_4')]
+
+    if multi_head:
+        x = [build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_1'),
+             build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_2'),
+             build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_3'),
+             build_classify_node(x, class_count, kernel_size=bottle_shape, name='char_4')]
+    else:
+        x = build_classify_node(x, class_count * 4, kernel_size=bottle_shape, name='chars')
 
     model = Model(inputs=inputs, outputs=x, name='captcha_model')
 
     return model
 
 
-def build_resnet_style_model(class_count, input_shape):
+def build_resnet_style_model(class_count, input_shape, multi_head=True):
     inputs = layers.Input(shape=input_shape)
 
     x = layers.Conv2D(64, kernel_size=(7, 7), strides=(2, 2), padding='valid', name='conv1')(inputs)
@@ -114,10 +123,14 @@ def build_resnet_style_model(class_count, input_shape):
 
     bottle_shape = (int(x.shape[1]), int(x.shape[2]))
     x = layers.AveragePooling2D(pool_size=bottle_shape, name='avg_pool')(x)
-    x = [build_classify_node(x, class_count, kernel_size=(1, 1), name='char_1'),
-         build_classify_node(x, class_count, kernel_size=(1, 1), name='char_2'),
-         build_classify_node(x, class_count, kernel_size=(1, 1), name='char_3'),
-         build_classify_node(x, class_count, kernel_size=(1, 1), name='char_4')]
+
+    if multi_head:
+        x = [build_classify_node(x, class_count, kernel_size=(1, 1), name='char_1'),
+             build_classify_node(x, class_count, kernel_size=(1, 1), name='char_2'),
+             build_classify_node(x, class_count, kernel_size=(1, 1), name='char_3'),
+             build_classify_node(x, class_count, kernel_size=(1, 1), name='char_4')]
+    else:
+        x = build_classify_node(x, class_count * 4, kernel_size=(1, 1), name='chars')
 
     model = Model(inputs=inputs, outputs=x, name='captcha_model')
 
@@ -125,26 +138,28 @@ def build_resnet_style_model(class_count, input_shape):
 
 
 def train_model(training_items=80000, validation_items=20000, batch_size=64,
-                epochs=20, init_epoch=0, check_point=None, fine_tune=False, force_compile=False):
+                epochs=20, init_epoch=0, check_point=None, fine_tune=False, force_compile=False,
+                multi_head=True, resnet_type=True, data_root='../data/'):
     model_name = 'captcha_model_{:%Y%m%d%H%M%S}'.format(datetime.datetime.now())
 
-    train_gen = data_generator('../data/training/', batch_size=batch_size)
-    val_gen = data_generator('../data/validation/', batch_size=batch_size)
+    train_gen = data_generator(os.path.join(data_root, 'training'), batch_size=batch_size, multi_head=multi_head)
+    val_gen = data_generator(os.path.join(data_root, 'validation'), batch_size=batch_size, multi_head=multi_head)
 
     if check_point is None:
-        model = build_resnet_style_model(label_categorical_size, input_shape=(112, 112, 3))
+        model = build_resnet_style_model(label_categorical_size, input_shape=(112, 112, 3), multi_head=multi_head) \
+            if resnet_type else \
+            build_conv_model(label_categorical_size, input_shape=(112, 112, 3), multi_head=multi_head)
     else:
         model = load_model(check_point)
 
     print(model.summary())
 
-    sgd = SGD(lr=0.01, momentum=0.9, nesterov=True)
-    optimizer = sgd if fine_tune else 'adam'
+    optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True) if fine_tune else 'adam'
+    loss = 'categorical_crossentropy' if multi_head else segmented_categorical_crossentropy
+    metric = 'accuracy' if multi_head else segmented_categorical_accuracy
 
     if check_point is None or force_compile:
-        model.compile(optimizer=optimizer,
-                      loss='categorical_crossentropy',
-                      metrics=['accuracy'])
+        model.compile(optimizer=optimizer, loss=loss, metrics=[metric])
 
     model.fit_generator(train_gen,
                         steps_per_epoch=training_items // batch_size,
@@ -153,13 +168,15 @@ def train_model(training_items=80000, validation_items=20000, batch_size=64,
                         epochs=epochs,
                         initial_epoch=init_epoch)
 
-    model.save('../models/{}.model'.format(model_name), include_optimizer=True)
-    model.save('../models/{}.checkpoint'.format(model_name), include_optimizer=False)
+    model.save('../models/{}.model'.format(model_name), include_optimizer=False)
+    model.save('../models/{}.checkpoint'.format(model_name), include_optimizer=True)
 
 
 if __name__ == '__main__':
-    train_model(check_point='../models/captcha_model_20180705004403.checkpoint',
-                init_epoch=20,
-                epochs=50,
-                fine_tune=True,
-                force_compile=True)
+    train_model(check_point=None,
+                init_epoch=0,
+                epochs=10,
+                fine_tune=False,
+                force_compile=True,
+                multi_head=False,
+                data_root='/home/dan/src/anticaptcha/data/')
